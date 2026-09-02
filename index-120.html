@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LavadoYaPoo - Generador de Video Publicitario</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, Roboto, Arial, sans-serif;
+    background: #0f172a;
+    color: #f1f5f9;
+    margin: 0;
+    padding: 16px;
+  }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  p.sub { color: #94a3b8; font-size: 13px; margin-top: 0; margin-bottom: 20px; }
+  .card {
+    background: #1e293b;
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .escena {
+    background: #0f172a;
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 10px;
+    border: 1px solid #334155;
+  }
+  label { font-size: 13px; color: #cbd5e1; display: block; margin-bottom: 6px; }
+  input[type="file"], input[type="number"], textarea {
+    width: 100%;
+    background: #0f172a;
+    color: #f1f5f9;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+  textarea { resize: vertical; min-height: 50px; }
+  button {
+    width: 100%;
+    padding: 14px;
+    border-radius: 10px;
+    border: none;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-add { background: #334155; color: #f1f5f9; margin-bottom: 8px; }
+  .btn-generar { background: #22c55e; color: #05210f; }
+  .btn-generar:disabled { background: #14532d; color: #64748b; }
+  #estado { margin-top: 14px; font-size: 14px; text-align: center; }
+  #resultado a {
+    display: block;
+    text-align: center;
+    margin-top: 12px;
+    background: #2563eb;
+    color: white;
+    padding: 12px;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .quitar { background: #7f1d1d; color: #fecaca; font-size: 12px; padding: 6px 10px; width: auto; float: right; }
+</style>
+</head>
+<body>
+
+<h1>🎬 LavadoYaPoo — Video Publicitario</h1>
+<p class="sub">Sube fotos o clips en orden, escribe el texto de cada escena y genera el video.</p>
+
+<div class="card">
+  <label>🎵 Audio (voz en off o música) — opcional, se aplica a todo el video</label>
+  <input type="file" id="audioInput" accept="audio/*">
+</div>
+
+<div id="escenasContainer"></div>
+
+<button class="btn-add" onclick="agregarEscena()">+ Agregar escena</button>
+<button class="btn-generar" id="btnGenerar" onclick="generarVideo()">Generar video</button>
+
+<div id="estado"></div>
+<div id="resultado"></div>
+
+<script>
+let contador = 0;
+
+function agregarEscena() {
+  contador++;
+  const id = contador;
+  const div = document.createElement('div');
+  div.className = 'escena';
+  div.id = 'escena-' + id;
+  div.innerHTML = `
+    <button class="quitar" onclick="document.getElementById('escena-${id}').remove()">Quitar</button>
+    <label>Foto o clip (escena ${id})</label>
+    <input type="file" class="archivoInput" accept="image/*,video/*">
+    <label>Texto en pantalla (opcional)</label>
+    <textarea class="textoInput" placeholder="Ej: Llegamos hasta donde tú estés"></textarea>
+    <label>Duración en segundos (solo aplica a fotos)</label>
+    <input type="number" class="duracionInput" value="3" min="1" max="15">
+  `;
+  document.getElementById('escenasContainer').appendChild(div);
+}
+
+// arrancar con 3 escenas por defecto
+agregarEscena(); agregarEscena(); agregarEscena();
+
+async function generarVideo() {
+  const escenas = document.querySelectorAll('.escena');
+  if (escenas.length === 0) {
+    alert('Agrega al menos una escena.');
+    return;
+  }
+
+  const formData = new FormData();
+  const metaEscenas = [];
+  let archivosValidos = 0;
+
+  escenas.forEach(esc => {
+    const archivo = esc.querySelector('.archivoInput').files[0];
+    const texto = esc.querySelector('.textoInput').value;
+    const duracion = esc.querySelector('.duracionInput').value;
+    if (archivo) {
+      formData.append('archivos', archivo);
+      metaEscenas.push({ texto, duracion: Number(duracion) });
+      archivosValidos++;
+    }
+  });
+
+  if (archivosValidos === 0) {
+    alert('Sube al menos una foto o clip.');
+    return;
+  }
+
+  formData.append('escenas', JSON.stringify(metaEscenas));
+
+  const audioFile = document.getElementById('audioInput').files[0];
+  if (audioFile) formData.append('audio', audioFile);
+
+  const btn = document.getElementById('btnGenerar');
+  btn.disabled = true;
+  btn.textContent = 'Generando... esto puede tardar unos minutos';
+  document.getElementById('estado').textContent = '⏳ Procesando video, no cierres esta pantalla...';
+  document.getElementById('resultado').innerHTML = '';
+
+  try {
+    const resp = await fetch('/generar-video', { method: 'POST', body: formData });
+    const data = await resp.json();
+
+    if (data.ok) {
+      document.getElementById('estado').textContent = '✅ ¡Video listo!';
+      document.getElementById('resultado').innerHTML =
+        `<a href="${data.video_url}" target="_blank" download>⬇️ Descargar video</a>`;
+    } else {
+      document.getElementById('estado').textContent = '❌ Error: ' + (data.error || 'desconocido');
+    }
+  } catch (e) {
+    document.getElementById('estado').textContent = '❌ Error de conexión: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Generar video';
+  }
+}
+</script>
+
+</body>
+</html>
